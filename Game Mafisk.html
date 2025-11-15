@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sand in Box</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+        body {
+            overflow: hidden;
+            background: #111;
+            font-family: Arial, sans-serif;
+        }
+        #canvas {
+            display: block;
+            background: #222;
+        }
+        .joystick-container {
+            position: absolute;
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.3);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #joystick {
+            bottom: 20px;
+            left: 40%;
+            transform: translateX(-50%);
+        }
+        .joystick-knob {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.8);
+            position: absolute;
+        }
+        .instructions {
+            position: absolute;
+            top: 10px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            color: white;
+            font-size: 14px;
+            text-shadow: 0 0 5px black;
+        }
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 60%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            width: 160px;
+        }
+        .control-btn {
+            padding: 7px 15px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 6px;
+            color: white;
+            font-size: 13px;
+            cursor: pointer;
+            outline: none;
+            width: 100%;
+            text-align: center;
+        }
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        .particle-count {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+        }
+        .particle-count input {
+            width: 75px;
+            padding: 6px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 4px;
+            color: white;
+            text-align: center;
+            font-size: 13px;
+            -moz-appearance: textfield;
+        }
+        .particle-count input::-webkit-outer-spin-button,
+        .particle-count input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        .particle-count label {
+            color: white;
+            font-size: 13px;
+            text-shadow: 0 0 3px black;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="instructions">Двигайте джойстик, чтобы наклонять песок в коробке</div>
+    <canvas id="canvas"></canvas>
+    <div id="joystick" class="joystick-container">
+        <div class="joystick-knob" id="knob"></div>
+    </div>
+    
+    <div class="controls">
+        <button id="colorModeBtn" class="control-btn">Радужный режим</button>
+        <button id="scatterBtn" class="control-btn">Разбросать шарики</button>
+        <button id="gravityBtn" class="control-btn">Отключить гравитацию</button>
+        <div class="particle-count">
+            <label for="particleCount">Частиц:</label>
+            <input type="text" id="particleCount" value="250">
+        </div>
+    </div>
+
+    <script>
+        // Canvas setup
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Color mode
+        let colorMode = 'rainbow';
+        const COLORS = ['#FF5252', '#4CAF50', '#FFEB3B', '#2196F3'];
+        const SAND_COLOR = '#D2B48C';
+
+        // Particle count
+        let maxParticles = 250;
+
+        // Gravity state
+        let gravityEnabled = true;
+        let lastJoyX = 0;
+        let lastJoyY = 0;
+
+        // UI Elements
+        const colorModeBtn = document.getElementById('colorModeBtn');
+        const scatterBtn = document.getElementById('scatterBtn');
+        const gravityBtn = document.getElementById('gravityBtn');
+        const particleCountInput = document.getElementById('particleCount');
+
+        colorModeBtn.addEventListener('click', () => {
+            colorMode = colorMode === 'rainbow' ? 'sand' : 'rainbow';
+            colorModeBtn.textContent = colorMode === 'rainbow' ? 'Радужный режим' : 'Песчаный режим';
+            initSand();
+        });
+
+        scatterBtn.addEventListener('click', () => {
+            // Give each particle a strong random boost in random direction
+            for (let i = 0; i < particles.length; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const force = 8 + Math.random() * 12;
+                particles[i].vx = Math.cos(angle) * force;
+                particles[i].vy = Math.sin(angle) * force;
+            }
+        });
+
+        gravityBtn.addEventListener('click', () => {
+            gravityEnabled = !gravityEnabled;
+            gravityBtn.textContent = gravityEnabled ? 'Отключить гравитацию' : 'Включить гравитацию';
+        });
+
+        particleCountInput.addEventListener('input', () => {
+            // Allow only digits
+            particleCountInput.value = particleCountInput.value.replace(/[^0-9]/g, '');
+        });
+
+        particleCountInput.addEventListener('change', () => {
+            let value = parseInt(particleCountInput.value) || 0;
+            if (value < 0) value = 0;
+            if (value > 1000000) value = 1000000;
+            maxParticles = value;
+            particleCountInput.value = value;
+            initSand();
+        });
+
+        // Joystick setup
+        const joystick = document.getElementById('joystick');
+        const knob = document.getElementById('knob');
+        const joystickRadius = 60;
+        const knobRadius = 25;
+        let joyX = 0;
+        let joyY = 0;
+
+        function setupJoystick(joystick, knob) {
+            let isDragging = false;
+
+            const handleStart = (e) => {
+                isDragging = true;
+                moveKnob(e);
+            };
+
+            const handleMove = (e) => {
+                if (!isDragging) return;
+                e.preventDefault();
+                moveKnob(e);
+            };
+
+            const handleEnd = () => {
+                isDragging = false;
+                knob.style.transform = 'translate(0, 0)';
+                joyX = 0;
+                joyY = 0;
+            };
+
+            const moveKnob = (e) => {
+                const rect = joystick.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                let x = clientX - centerX;
+                let y = clientY - centerY;
+                const distance = Math.sqrt(x * x + y * y);
+                if (distance > joystickRadius - knobRadius) {
+                    x = x * (joystickRadius - knobRadius) / distance;
+                    y = y * (joystickRadius - knobRadius) / distance;
+                }
+                knob.style.transform = `translate(${x}px, ${y}px)`;
+                joyX = x / (joystickRadius - knobRadius);
+                joyY = y / (joystickRadius - knobRadius);
+            };
+
+            joystick.addEventListener('mousedown', handleStart);
+            joystick.addEventListener('touchstart', handleStart, { passive: false });
+            window.addEventListener('mousemove', handleMove);
+            window.addEventListener('touchmove', handleMove, { passive: false });
+            window.addEventListener('mouseup', handleEnd);
+            window.addEventListener('touchend', handleEnd);
+        }
+
+        setupJoystick(joystick, knob);
+
+        // Box parameters
+        const BOX_PADDING = 40;
+        const box = {
+            x: BOX_PADDING,
+            y: BOX_PADDING,
+            width: canvas.width - BOX_PADDING * 2,
+            height: canvas.height - BOX_PADDING * 2
+        };
+
+        // Sand simulation
+        const PARTICLE_SIZE = 5;
+        const PARTICLE_RADIUS = PARTICLE_SIZE / 2;
+        const PARTICLE_DIAMETER = PARTICLE_SIZE;
+        let particles = [];
+
+        function initSand() {
+            particles = [];
+            
+            if (maxParticles === 0) return;
+            
+            // Create particles randomly distributed in the bottom third of the box
+            const sandHeight = box.height / 3;
+            const startX = box.x + PARTICLE_RADIUS;
+            const startY = box.y + box.height - sandHeight;
+            const availableWidth = box.width - PARTICLE_RADIUS * 2;
+            const availableHeight = sandHeight - PARTICLE_RADIUS * 2;
+            
+            for (let i = 0; i < maxParticles; i++) {
+                const color = colorMode === 'sand' ? SAND_COLOR : COLORS[i % COLORS.length];
+                particles.push({
+                    x: startX + Math.random() * availableWidth,
+                    y: startY + Math.random() * availableHeight,
+                    vx: 0,
+                    vy: 0,
+                    color: color
+                });
+            }
+        }
+
+        initSand();
+
+        // Physics parameters
+        const MAX_GRAVITY = 0.8; // Increased for more noticeable effect
+        const DAMPING = 0.99;
+        const COLLISION_DAMPING = 0.4;
+        const PARTICLE_RESTITUTION = 0.7;
+        const GRAVITY_OFF_DAMPING = 0.97; // Extra damping when gravity is off
+
+        function animate() {
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw box
+            ctx.strokeStyle = '#8B4513';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(box.x, box.y, box.width, box.height);
+
+            // Store last non-zero joystick values for gravity-off movement
+            if (Math.abs(joyX) > 0.01 || Math.abs(joyY) > 0.01) {
+                lastJoyX = joyX;
+                lastJoyY = joyY;
+            }
+
+            // Apply gravity only if enabled
+            let gravityX = 0;
+            let gravityY = 0;
+            if (gravityEnabled) {
+                gravityX = joyX * MAX_GRAVITY;
+                gravityY = joyY * MAX_GRAVITY;
+            } else {
+                // When gravity is off, maintain previous direction but with damping
+                gravityX = lastJoyX * MAX_GRAVITY;
+                gravityY = lastJoyY * MAX_GRAVITY;
+            }
+
+            // Update particles
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+
+                // Apply gravity
+                p.vx += gravityX;
+                p.vy += gravityY;
+
+                // Update position
+                p.x += p.vx;
+                p.y += p.vy;
+
+                // Apply damping (always applied)
+                if (!gravityEnabled) {
+                    // Extra damping when gravity is off to slow particles down
+                    p.vx *= GRAVITY_OFF_DAMPING;
+                    p.vy *= GRAVITY_OFF_DAMPING;
+                } else {
+                    p.vx *= DAMPING;
+                    p.vy *= DAMPING;
+                }
+
+                // Box collision
+                if (p.x < box.x + PARTICLE_RADIUS) {
+                    p.x = box.x + PARTICLE_RADIUS;
+                    p.vx = -p.vx * COLLISION_DAMPING;
+                } else if (p.x > box.x + box.width - PARTICLE_RADIUS) {
+                    p.x = box.x + box.width - PARTICLE_RADIUS;
+                    p.vx = -p.vx * COLLISION_DAMPING;
+                }
+                
+                if (p.y < box.y + PARTICLE_RADIUS) {
+                    p.y = box.y + PARTICLE_RADIUS;
+                    p.vy = -p.vy * COLLISION_DAMPING;
+                } else if (p.y > box.y + box.height - PARTICLE_RADIUS) {
+                    p.y = box.y + box.height - PARTICLE_RADIUS;
+                    p.vy = -p.vy * COLLISION_DAMPING;
+                }
+            }
+
+            // Particle-particle collision
+            const particleCount = particles.length;
+            const checkLimit = particleCount > 1000 ? 500 : particleCount;
+            for (let i = 0; i < checkLimit; i++) {
+                const p1 = particles[i];
+                for (let j = i + 1; j < checkLimit; j++) {
+                    const p2 = particles[j];
+                    const dx = p2.x - p1.x;
+                    const dy = p2.y - p1.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (distance < PARTICLE_DIAMETER && distance > 0) {
+                        const nx = dx / distance;
+                        const ny = dy / distance;
+                        
+                        const overlap = PARTICLE_DIAMETER - distance;
+                        const separateX = nx * overlap * 0.5;
+                        const separateY = ny * overlap * 0.5;
+                        p1.x -= separateX;
+                        p1.y -= separateY;
+                        p2.x += separateX;
+                        p2.y += separateY;
+                        
+                        const rvx = p2.vx - p1.vx;
+                        const rvy = p2.vy - p1.vy;
+                        const velAlongNormal = rvx * nx + rvy * ny;
+                        if (velAlongNormal > 0) continue;
+                        
+                        const impulse = -(1 + PARTICLE_RESTITUTION) * velAlongNormal;
+                        p1.vx -= impulse * nx * 0.5;
+                        p1.vy -= impulse * ny * 0.5;
+                        p2.vx += impulse * nx * 0.5;
+                        p2.vy += impulse * ny * 0.5;
+                    }
+                }
+            }
+
+            // Draw particles
+            for (let i = 0; i < particles.length; i++) {
+                const p = particles[i];
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, PARTICLE_RADIUS, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            box.width = canvas.width - BOX_PADDING * 2;
+            box.height = canvas.height - BOX_PADDING * 2;
+            initSand();
+        });
+    </script>
+</body>
+</html>
